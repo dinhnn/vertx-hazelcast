@@ -1,11 +1,13 @@
 package io.vertx.spi.cluster.hazelcast.impl.serializable;
 
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+
+import com.hazelcast.nio.ObjectDataInput;
+import com.hazelcast.nio.ObjectDataOutput;
 
 import io.vertx.core.json.JsonArray;
-import io.vertx.core.shareddata.impl.ClusterSerializable;
 
-public class JsonArrayDataSerializable extends BuiltinClusterDataSerializable {
+public class JsonArrayDataSerializable extends BuiltinClusterDataSerializable<JsonArray> {
 	public JsonArrayDataSerializable(){
 		
 	}
@@ -16,10 +18,12 @@ public class JsonArrayDataSerializable extends BuiltinClusterDataSerializable {
 	public int getId() {
 		return 2;
 	}
-
 	@Override
-	protected ClusterSerializable newInstance(byte[] bytes) {
-		return new JsonArray(new String(bytes,StandardCharsets.UTF_8));
+	public void readData(ObjectDataInput objectDataInput ) throws IOException {
+		clusterSerializable = new JsonArray(objectDataInput.readUTF());
 	}
-
+	@Override
+	public void writeData(ObjectDataOutput objectDataOutput) throws IOException {
+		objectDataOutput.writeUTF(clusterSerializable.encode());
+	}
 }

@@ -16,9 +16,30 @@
 
 package io.vertx.spi.cluster.hazelcast;
 
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+
 import com.hazelcast.config.Config;
 import com.hazelcast.config.XmlConfigBuilder;
-import com.hazelcast.core.*;
+import com.hazelcast.core.Hazelcast;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.IAtomicLong;
+import com.hazelcast.core.ILock;
+import com.hazelcast.core.IMap;
+import com.hazelcast.core.ISemaphore;
+import com.hazelcast.core.Member;
+import com.hazelcast.core.MemberAttributeEvent;
+import com.hazelcast.core.MembershipEvent;
+import com.hazelcast.core.MembershipListener;
+
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -33,13 +54,7 @@ import io.vertx.core.spi.cluster.AsyncMultiMap;
 import io.vertx.core.spi.cluster.NodeListener;
 import io.vertx.spi.cluster.hazelcast.impl.HazelcastAsyncMap;
 import io.vertx.spi.cluster.hazelcast.impl.HazelcastAsyncMultiMap;
-
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.*;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
+import io.vertx.spi.cluster.hazelcast.impl.IdentifiedHazelcastAsyncMap;
 
 /**
  * A cluster manager that uses Hazelcast
@@ -66,6 +81,8 @@ public class HazelcastClusterManager implements ExtendedClusterManager, Membersh
 
   private NodeListener nodeListener;
   private volatile boolean active;
+  
+  private boolean useIdentifiedDataSerializable; 
 
   private Config conf;
 
@@ -114,6 +131,9 @@ public class HazelcastClusterManager implements ExtendedClusterManager, Membersh
             log.warn("Cannot find cluster configuration on classpath and none specified programmatically. Using default hazelcast configuration");
           }
         }
+        useIdentifiedDataSerializable = "true".equals(System.getProperty("identified.data.serializable"));
+        log.info("UseIdentifiedDataSerializable = {}",useIdentifiedDataSerializable);
+        System.out.println("UseIdentifiedDataSerializable "+useIdentifiedDataSerializable);
         hazelcast = Hazelcast.newHazelcastInstance(conf);
         nodeID = hazelcast.getLocalEndpoint().getUuid();
         membershipListenerId = hazelcast.getCluster().addMembershipListener(this);
@@ -164,7 +184,7 @@ public class HazelcastClusterManager implements ExtendedClusterManager, Membersh
   public <K, V> void getAsyncMap(String name, Handler<AsyncResult<AsyncMap<K, V>>> resultHandler) {
     vertx.executeBlocking(fut -> {
       IMap<K, V> map = hazelcast.getMap(name);
-      fut.complete(new HazelcastAsyncMap<>(vertx, map));
+      fut.complete(useIdentifiedDataSerializable?new IdentifiedHazelcastAsyncMap<>(vertx, map):new HazelcastAsyncMap<>(vertx, map));
     }, resultHandler);
   }
 

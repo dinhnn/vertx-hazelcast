@@ -29,15 +29,21 @@ import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.buffer.impl.BufferImpl;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.shareddata.AsyncMap;
 import io.vertx.core.shareddata.impl.ClusterSerializable;
+import io.vertx.spi.cluster.hazelcast.impl.serializable.BufferDataSerializable;
+import io.vertx.spi.cluster.hazelcast.impl.serializable.BuiltinClusterDataSerializable;
+import io.vertx.spi.cluster.hazelcast.impl.serializable.JsonArrayDataSerializable;
+import io.vertx.spi.cluster.hazelcast.impl.serializable.JsonDataSerializable;
 
-public class HazelcastAsyncMap<K, V> implements AsyncMap<K, V> {
+public class IdentifiedHazelcastAsyncMap<K, V> implements AsyncMap<K, V> {
 
 	private final Vertx vertx;
 	private final IMap<K, V> map;
 
-	public HazelcastAsyncMap(Vertx vertx, IMap<K, V> map) {
+	public IdentifiedHazelcastAsyncMap(Vertx vertx, IMap<K, V> map) {
 		this.vertx = vertx;
 		this.map = map;
 	}
@@ -129,7 +135,14 @@ public class HazelcastAsyncMap<K, V> implements AsyncMap<K, V> {
 
 	@SuppressWarnings("unchecked")
 	private <T> T convertParam(T obj) {
-		if (obj instanceof ClusterSerializable) {
+		Class<?> clazz = obj.getClass();
+		if (clazz == JsonObject.class) {
+			return (T) (new JsonDataSerializable((JsonObject) obj));
+		} else if (clazz == BufferImpl.class) {			
+			return (T) (new BufferDataSerializable((Buffer) obj));
+		} else if (clazz == JsonArray.class) {
+			return (T) (new JsonArrayDataSerializable((JsonArray) obj));
+		} else if (ClusterSerializable.class.isAssignableFrom(clazz)) {
 			ClusterSerializable cobj = (ClusterSerializable) obj;
 			return (T) (new DataSerializableHolder(cobj));
 		} else {
@@ -139,7 +152,9 @@ public class HazelcastAsyncMap<K, V> implements AsyncMap<K, V> {
 
 	@SuppressWarnings("unchecked")
 	private <T> T convertReturn(Object obj) {
-		if (obj instanceof DataSerializableHolder) {
+		if (obj instanceof BuiltinClusterDataSerializable) {
+			return (T) ((BuiltinClusterDataSerializable) obj).clusterSerializable;
+		} else if (obj instanceof DataSerializableHolder) {
 			DataSerializableHolder cobj = (DataSerializableHolder) obj;
 			return (T) cobj.clusterSerializable();
 		} else {
@@ -176,11 +191,7 @@ public class HazelcastAsyncMap<K, V> implements AsyncMap<K, V> {
 			objectDataInput.readFully(bytes);
 			try {
 				Class<?> clazz = Thread.currentThread().getContextClassLoader().loadClass(className);
-				if(Buffer.class.isAssignableFrom(clazz)){
-					clusterSerializable = Buffer.buffer();
-				} else {
-					clusterSerializable = (ClusterSerializable) clazz.newInstance();
-				}
+				clusterSerializable = (ClusterSerializable) clazz.newInstance();
 				clusterSerializable.readFromBuffer(0, Buffer.buffer(bytes));				
 			} catch (Exception e) {
 				throw new IllegalStateException("Failed to load class " + e.getMessage(), e);
